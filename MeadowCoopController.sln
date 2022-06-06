@@ -1,0 +1,27 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32526.322
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MeadowCoopController", "MeadowCoopController\MeadowCoopController.csproj", "{73AF1D05-CC2D-46B6-BF13-F373CC424649}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73AF1D05-CC2D-46B6-BF13-F373CC424649}.Release|Any CPU.Deploy.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {291A8C1C-ADD1-4E08-8E12-6D3F6AA21539}
+	EndGlobalSection
+EndGlobal
