@@ -1,4 +1,4 @@
-﻿#define DISABLE_WIFI
+﻿//#define DISABLE_WIFI
 
 using System;
 using System.Collections;
@@ -21,12 +21,13 @@ namespace MeadowCoopController
     {
         private readonly TimeSpan longPressThreshold = TimeSpan.FromMilliseconds(2000);
 
-        RgbPwmLed onboardLed;
-        IPwmPort coopLightsPwm;
-        IPwmPort buttonLightPwm;
-        PwmLed coopLights;
-        PwmLed buttonLight;
-        PushButton pushButton;
+        private RgbPwmLed onboardLed;
+        private IPwmPort coopLightsPwm;
+        private IPwmPort buttonLightPwm;
+        private PwmLed coopLights;
+        private PwmLed buttonLight;
+        private IDigitalInputPort pushButton;
+        private bool? lastPushButtonStatus;
         private bool? lightsOverride;
         private bool? lastLightsTimerState;
         private bool coopLightsOn;
@@ -53,19 +54,14 @@ namespace MeadowCoopController
                 bluePwmPin: Device.Pins.OnboardLedBlue,
                 Meadow.Peripherals.Leds.IRgbLed.CommonType.CommonAnode);
 
-            this.coopLightsPwm = Device.CreatePwmPort(Device.Pins.D04);
+            this.coopLightsPwm = Device.CreatePwmPort(Device.Pins.D04, frequency: 1000);
             this.coopLights = new PwmLed(this.coopLightsPwm, TypicalForwardVoltage.Green);
 
-            this.buttonLightPwm = Device.CreatePwmPort(Device.Pins.D03);
+            this.buttonLightPwm = Device.CreatePwmPort(Device.Pins.D03, frequency: 1000);
             this.buttonLight = new PwmLed(this.buttonLightPwm, TypicalForwardVoltage.Blue);
 
-            this.pushButton = new PushButton(
-                Device,
-                Device.Pins.D02,
-                ResistorMode.InternalPullUp);
-
-            this.pushButton.PressStarted += PushButton_PressStarted;
-            this.pushButton.PressEnded += PushButton_PressEnded;
+            this.pushButton = Device.CreateDigitalInputPort(Device.Pins.D02, InterruptMode.EdgeBoth, ResistorMode.InternalPullUp, debounceDuration: 50, glitchDuration: 25);
+            this.pushButton.Changed += PushButton_Changed;
 
             this.coopLightsPwm.Start();
             this.buttonLightPwm.Start();
@@ -127,6 +123,30 @@ namespace MeadowCoopController
             ButtonLightActive();
         }
 
+        private void PushButton_Changed(object sender, DigitalPortResult e)
+        {
+            //Console.WriteLine($"Push button 2 new status {e.New.State}, old status {e.Old?.State}");
+
+            if (this.lastPushButtonStatus.HasValue)
+            {
+                if (this.lastPushButtonStatus.Value == e.New.State)
+                    return;
+            }
+
+            if(e.New.State == false)
+            {
+                // Pressed
+                PushButton_PressStarted(this.pushButton, EventArgs.Empty);
+            }
+            else
+            {
+                // Depressed
+                PushButton_PressEnded(this.pushButton, EventArgs.Empty);
+            }
+
+            this.lastPushButtonStatus = e.New.State;
+        }
+
         private async Task ButtonPressHandler(CancellationToken cancelToken)
         {
             ButtonLightOff();
@@ -154,7 +174,8 @@ namespace MeadowCoopController
                         // Set brightness if the lights are on
 
                         float currentBrightness = this.settings.Brightness;
-                        float adder = 0.02F;
+                        float adder = 0.005F;
+                        int lastBrightness = (int)(currentBrightness * 100.0);
 
                         while (!cancelToken.IsCancellationRequested)
                         {
@@ -167,10 +188,15 @@ namespace MeadowCoopController
                             if (currentBrightness < 0.01F)
                                 currentBrightness = 0.01F;
 
-                            Console.WriteLine($"Brightness = {currentBrightness:P0}");
+                            int reportBrightness = (int)(currentBrightness * 100.0);
+                            if (lastBrightness != reportBrightness)
+                            {
+                                Console.WriteLine($"Brightness = {currentBrightness:P0}");
+                                lastBrightness = reportBrightness;
+                            }
 
                             this.coopLights.Brightness = currentBrightness;
-                            await Task.Delay(100);
+                            await Task.Delay(20);
                         }
 
                         if (!this.abortLongHold)
@@ -204,7 +230,7 @@ namespace MeadowCoopController
         {
             Console.WriteLine("Pressed");
 
-            if(this.buttonCts != null)
+            if (this.buttonCts != null)
             {
                 // We lost an unpressed event
                 Console.WriteLine("Missed unpressed event");
@@ -290,6 +316,8 @@ namespace MeadowCoopController
 
             this.coopLightsOn = this.lightsOverride ?? false;
             SetLights();
+
+            Console.WriteLine($"Coop lights are now {(this.coopLightsOn ? "On" : "Off")}");
         }
 
         void Start()
