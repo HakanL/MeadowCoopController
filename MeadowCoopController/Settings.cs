@@ -6,6 +6,8 @@ namespace MeadowCoopController
 {
     internal class Settings
     {
-        public float Brightness { get; set; } = 0.5F;
+        public float CoopBrightness { get; set; } = 0.5F;
+
+        public float TreeBrightness { get; set; } = 0.5F;
     }
 }

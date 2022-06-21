@@ -1,4 +1,4 @@
-﻿//#define DISABLE_WIFI
+﻿#define DISABLE_WIFI
 
 using System;
 using System.Collections;
@@ -20,17 +20,22 @@ namespace MeadowCoopController
     public class MeadowApp : App<F7FeatherV1, MeadowApp>
     {
         private readonly TimeSpan longPressThreshold = TimeSpan.FromMilliseconds(2000);
+        private const int pwmFrequency = 1000;
 
         private RgbPwmLed onboardLed;
         private IPwmPort coopLightsPwm;
         private IPwmPort buttonLightPwm;
+        private IPwmPort treeLightsPwm;
         private PwmLed coopLights;
         private PwmLed buttonLight;
+        private PwmLed treeLights;
         private IDigitalInputPort pushButton;
         private bool? lastPushButtonStatus;
         private bool? lightsOverride;
-        private bool? lastLightsTimerState;
+        private bool? lastCoopLightsTimerState;
+        private bool? lastTreeLightsTimerState;
         private bool coopLightsOn;
+        private bool treeLightsOn;
         private Settings settings;
         private CancellationTokenSource buttonCts;
         private bool abortLongHold;
@@ -44,7 +49,7 @@ namespace MeadowCoopController
             Start();
         }
 
-        async void Initialize()
+        private async void Initialize()
         {
             Console.WriteLine("Initialize hardware...");
 
@@ -54,17 +59,24 @@ namespace MeadowCoopController
                 bluePwmPin: Device.Pins.OnboardLedBlue,
                 Meadow.Peripherals.Leds.IRgbLed.CommonType.CommonAnode);
 
-            this.coopLightsPwm = Device.CreatePwmPort(Device.Pins.D04, frequency: 1000);
-            this.coopLights = new PwmLed(this.coopLightsPwm, TypicalForwardVoltage.Green);
+            this.coopLightsPwm = Device.CreatePwmPort(Device.Pins.D05, frequency: pwmFrequency);
+            this.coopLights = new PwmLed(this.coopLightsPwm, TypicalForwardVoltage.ResistorLimited);
+            this.coopLightsPwm.Frequency = pwmFrequency;
 
-            this.buttonLightPwm = Device.CreatePwmPort(Device.Pins.D03, frequency: 1000);
-            this.buttonLight = new PwmLed(this.buttonLightPwm, TypicalForwardVoltage.Blue);
+            this.buttonLightPwm = Device.CreatePwmPort(Device.Pins.D03, frequency: pwmFrequency);
+            this.buttonLight = new PwmLed(this.buttonLightPwm, TypicalForwardVoltage.ResistorLimited);
+            this.buttonLightPwm.Frequency = pwmFrequency;
 
-            this.pushButton = Device.CreateDigitalInputPort(Device.Pins.D02, InterruptMode.EdgeBoth, ResistorMode.InternalPullUp, debounceDuration: 50, glitchDuration: 25);
+            this.treeLightsPwm = Device.CreatePwmPort(Device.Pins.D10, frequency: pwmFrequency);
+            this.treeLights = new PwmLed(this.treeLightsPwm, TypicalForwardVoltage.ResistorLimited);
+            this.treeLightsPwm.Frequency = pwmFrequency;
+
+            this.pushButton = Device.CreateDigitalInputPort(Device.Pins.D00, InterruptMode.EdgeBoth, ResistorMode.InternalPullUp, debounceDuration: 50, glitchDuration: 25);
             this.pushButton.Changed += PushButton_Changed;
 
             this.coopLightsPwm.Start();
             this.buttonLightPwm.Start();
+            this.treeLightsPwm.Start();
 
             Console.WriteLine("Reading config file...");
             try
@@ -77,7 +89,8 @@ namespace MeadowCoopController
                 {
                     var x = SimpleJsonSerializer.JsonSerializer.DeserializeString(File.ReadAllText(settingsFilename)) as Hashtable;
 
-                    this.settings.Brightness = ReadSettings(x, "Brightness", 0.5F);
+                    this.settings.CoopBrightness = ReadSettings(x, "CoopBrightness", 0.5F);
+                    this.settings.TreeBrightness = ReadSettings(x, "TreeBrightness", 0.5F);
                 }
                 else
                     SaveSettings();
@@ -91,7 +104,7 @@ namespace MeadowCoopController
                 SaveSettings();
             }
 
-            Console.WriteLine($"Coop lights brightness = {this.settings.Brightness:P0}");
+            Console.WriteLine($"Coop lights brightness = {this.settings.CoopBrightness:P0}");
 
             this.onboardLed.StartPulse(Color.Orange, 0.5F, 0.1F);
 
@@ -173,7 +186,7 @@ namespace MeadowCoopController
 
                         // Set brightness if the lights are on
 
-                        float currentBrightness = this.settings.Brightness;
+                        float currentBrightness = this.settings.CoopBrightness;
                         float adder = 0.005F;
                         int lastBrightness = (int)(currentBrightness * 100.0);
 
@@ -202,12 +215,12 @@ namespace MeadowCoopController
                         if (!this.abortLongHold)
                         {
                             Console.WriteLine($"Set brightness to {currentBrightness:P0}");
-                            this.settings.Brightness = currentBrightness;
+                            this.settings.CoopBrightness = currentBrightness;
 
                             // Flash the lights
                             this.coopLights.Brightness = 0;
                             await Task.Delay(500);
-                            this.coopLights.Brightness = this.settings.Brightness;
+                            this.coopLights.Brightness = this.settings.CoopBrightness;
                             await Task.Delay(500);
                             this.coopLights.Brightness = 0;
                             await Task.Delay(500);
@@ -271,7 +284,8 @@ namespace MeadowCoopController
 
                 var jsonData = new Hashtable
                 {
-                    ["Brightness"] = this.settings.Brightness
+                    ["CoopBrightness"] = this.settings.CoopBrightness,
+                    ["TreeBrightness"] = this.settings.TreeBrightness
                 };
 
                 File.WriteAllText(settingsFilename, SimpleJsonSerializer.JsonSerializer.SerializeObject(jsonData));
@@ -315,6 +329,7 @@ namespace MeadowCoopController
             }
 
             this.coopLightsOn = this.lightsOverride ?? false;
+            this.treeLightsOn = this.lightsOverride ?? false;
             SetLights();
 
             Console.WriteLine($"Coop lights are now {(this.coopLightsOn ? "On" : "Off")}");
@@ -327,26 +342,38 @@ namespace MeadowCoopController
                 int TimeZoneOffSet = -5; // CST
                 var now = DateTime.Now.AddHours(TimeZoneOffSet);
 
-                bool lightsOnTimer = now.Hour >= 19 && now.Hour < 23;
+                bool coopLightsOnTimer = now.Hour >= 19 && now.Hour < 22;
+                bool treeLightsOnTimer = now.Hour >= 19 || now.Hour < 7;
                 //lightsOnTimer = now.Hour >= 15 && now.Hour < 16;        // Test
 
-                Console.WriteLine($"It is now {now} and the lights timer is {(lightsOnTimer ? "On" : "Off")}");
+                Console.WriteLine($"It is now {now} and the coop lights timer is {(coopLightsOnTimer ? "On" : "Off")} and tree lights timer is {(treeLightsOnTimer ? "On" : "Off")}");
 
-                if (!this.lastLightsTimerState.HasValue || this.lastLightsTimerState != lightsOnTimer)
+                if (!this.lastCoopLightsTimerState.HasValue || this.lastCoopLightsTimerState != coopLightsOnTimer)
                 {
                     // It has changed
-                    Console.WriteLine($"Lights on timer has changed state. Old State = {lastLightsTimerState}");
+                    Console.WriteLine($"Lights on Coop timer has changed state. Old State = {lastCoopLightsTimerState}");
 
                     this.lightsOverride = null;
 
                     if (this.buttonCts == null)
                         ButtonLightActive();
-                    this.coopLightsOn = lightsOnTimer;
+                    this.coopLightsOn = coopLightsOnTimer;
 
                     SetLights();
                 }
 
-                this.lastLightsTimerState = lightsOnTimer;
+                if (!this.lastTreeLightsTimerState.HasValue || this.lastTreeLightsTimerState != treeLightsOnTimer)
+                {
+                    // It has changed
+                    Console.WriteLine($"Lights on Tree timer has changed state. Old State = {lastTreeLightsTimerState}");
+
+                    this.treeLightsOn = treeLightsOnTimer;
+
+                    SetLights();
+                }
+
+                this.lastCoopLightsTimerState = coopLightsOnTimer;
+                this.lastTreeLightsTimerState = treeLightsOnTimer;
 
                 Thread.Sleep(10000);
             }
@@ -355,9 +382,14 @@ namespace MeadowCoopController
         private void SetLights()
         {
             if (this.coopLightsOn)
-                this.coopLights.Brightness = this.settings.Brightness;
+                this.coopLights.Brightness = this.settings.CoopBrightness;
             else
                 this.coopLights.Brightness = 0;
+
+            if (this.treeLightsOn)
+                this.treeLights.Brightness = this.settings.TreeBrightness;
+            else
+                this.treeLights.Brightness = 0;
         }
 
         private void WiFiAdapter_ConnectionCompleted(object sender, EventArgs e)
