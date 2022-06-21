@@ -1,4 +1,4 @@
-﻿#define DISABLE_WIFI
+﻿//#define DISABLE_WIFI
 
 using System;
 using System.Collections;
@@ -104,7 +104,10 @@ namespace MeadowCoopController
                 SaveSettings();
             }
 
+            //this.settings.TreeBrightness = 1;
+
             Console.WriteLine($"Coop lights brightness = {this.settings.CoopBrightness:P0}");
+            Console.WriteLine($"Tree lights brightness = {this.settings.TreeBrightness:P0}");
 
             this.onboardLed.StartPulse(Color.Orange, 0.5F, 0.1F);
 
@@ -329,7 +332,6 @@ namespace MeadowCoopController
             }
 
             this.coopLightsOn = this.lightsOverride ?? false;
-            this.treeLightsOn = this.lightsOverride ?? false;
             SetLights();
 
             Console.WriteLine($"Coop lights are now {(this.coopLightsOn ? "On" : "Off")}");
